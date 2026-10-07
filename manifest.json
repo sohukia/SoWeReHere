@@ -1,0 +1,36 @@
+{
+    "manifest_version": 2,
+    "name": "So We're Here",
+    "description": "Signer avec des images sur SoWeSign, et afficher le code de pr\u00e9sence du prochain cours",
+    "version": "1.1",
+    "icons": {
+        "128": "images/no-sws.png"
+    },
+    "permissions": [
+        "webRequest",
+        "webRequestBlocking",
+        "storage",
+        "*://app.sowesign.com/*"
+    ],
+    "background": {
+        "scripts": [
+            "background.js"
+        ]
+    },
+    "browser_action": {
+        "default_title": "SoWeHere",
+        "default_popup": "popup.html"
+    },
+    "content_scripts": [
+        {
+            "js": [
+                "scripts/content.js",
+                "scripts/fill.js"
+            ],
+            "matches": [
+                "http://app.sowesign.com/*",
+                "https://app.sowesign.com/*"
+            ]
+        }
+    ]
+}
