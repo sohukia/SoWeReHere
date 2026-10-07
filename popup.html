@@ -27,7 +27,7 @@
       body {
         margin: 0;
         padding: 8px;
-        width: 110px;
+        width: 150px;
         background: var(--bg);
         color: var(--fg);
         font: 13px system-ui, -apple-system, sans-serif;
@@ -62,6 +62,21 @@
       .done .check { display: block; }
       .done .copy-icon { display: none; }
       .msg { color: var(--muted); }
+      .row { margin-top: 6px; }
+      #autosign, #setsig {
+        all: unset;
+        box-sizing: border-box;
+        width: 100%;
+        padding: 6px 7px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 0.15s, transform 0.1s;
+      }
+      #autosign { background: var(--accent); color: #fff; font-weight: 600; }
+      #autosign:active, #setsig:active { transform: scale(0.97); }
+      #autosign:focus-visible, #setsig:focus-visible { outline: 2px solid var(--accent); }
+      #setsig { color: var(--muted); font-size: 11px; padding: 3px; }
+      #setsig:hover { color: var(--fg); }
     </style>
   </head>
   <body>
@@ -72,6 +87,8 @@
         <svg class="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
       </span>
     </button>
+    <div class="row"><button id="autosign" title="Fill the code, then load your saved signature" hidden>AutoSign</button></div>
+    <div class="row"><button id="setsig">Set signature…</button></div>
     <div id="msg" class="msg">Loading…</div>
     <script src="code.js"></script>
     <script src="popup.js"></script>

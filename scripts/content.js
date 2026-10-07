@@ -4,6 +4,12 @@
   *
 */
 
+// Durée max (ms) entre le clic sur AutoSign et l'ouverture de la page de signature
+const AUTOSIGN_MAX_AGE = 2 * 60 * 1000;
+
+// Nombre max d'essais (250 ms) pour attendre que le canvas soit affiché
+const AUTOSIGN_WAIT_TRIES = 120;
+
 // L'URL précéidente, pour vérifier si l'URL a changé
 var previousURL = '';
 
@@ -13,6 +19,10 @@ setInterval(() => {
     if (previousURL != document.URL) {
         // L'URL est le bon ?
         if (document.URL == 'https://app.sowesign.com/student/signature' || document.URL == 'https://app.sowesign.com/student/recoveries') {
+            // La page Angular n'est pas forcément rendue : on réessaie au prochain tick tant que le canvas n'existe pas
+            if (!document.getElementsByTagName('canvas')[0] || !document.getElementsByClassName('text center border-radius padding-xs white cursor-pointer')[0]) {
+                return;
+            }
             main();
         }
         // L'URL a changé, on change aussi previousURL pour ne pas exécuter deux fois la fonction
@@ -83,14 +93,14 @@ const main = () => {
     // Note: je ne sais pas pourquoi je change de langue
 
     const draw = url => {
-        // Firefox : une image créée par le content script a un autre "principal" que la page, donc
-        // elle souille le canvas pour la page (son toDataURL() lève SecurityError, "Valider" reste grisé).
-        // On crée donc l'image dans le contexte de la page (wrappedJSObject) ; sous Chrome, ça n'existe pas.
-        var pageWindow = window.wrappedJSObject || window;
-        var pageContext = (canvas.wrappedJSObject || canvas).getContext('2d');
-        var image = new pageWindow.Image();
+        // Firefox : drawImage() d'une image créée par le content script souille le canvas pour la page
+        // (son toDataURL() lève SecurityError, "Valider" reste grisé). Charger l'image côté page est bloqué
+        // par la CSP. On dessine donc sur un canvas annexe, puis on copie les pixels avec putImageData(),
+        // qui ne souille pas.
+        var image = new Image();
 
         const onLoad = _e => {
+            console.log('[SoWeSketch] image chargée :', image.width + 'x' + image.height);
             // Centers the image
 
             // Canvas dimensions
@@ -133,15 +143,48 @@ const main = () => {
             // Réaffecter width vide le canvas ET lève un éventuel taint (clearRect ne le fait pas)
             canvas.width = canvas.width;
 
-            // Draws the image as PNG
-            pageContext.drawImage(image, posX, posY, width, height);
+            // Dessine l'image sur un canvas annexe, puis copie les pixels sur celui de la page
+            var scratch = document.createElement('canvas');
+            scratch.width = canvas.width;
+            scratch.height = canvas.height;
+            var scratchContext = scratch.getContext('2d');
+            scratchContext.drawImage(image, posX, posY, width, height);
+            context.putImageData(scratchContext.getImageData(0, 0, scratch.width, scratch.height), 0, 0);
 
             // Dit au composant qu'une signature existe (active le bouton "Valider")
             notifySignaturePad(canvas);
         };
 
-        // exportFunction : le handler du content script doit être exposé à la page (Firefox)
-        image.onload = typeof exportFunction === 'function' ? exportFunction(onLoad, window) : onLoad;
+        image.onload = onLoad;
+        image.onerror = () => console.log('[SoWeSketch] image illisible');
         image.src = url;
     }
+
+    // AutoSign : le popup a rempli le code puis posé un drapeau, on charge la signature enregistrée
+    // et on laisse l'utilisateur cliquer sur "Valider"
+    browser.storage.local.get(['signature', 'autoSignAt']).then(({ signature, autoSignAt }) => {
+        console.log('[SoWeSketch] AutoSign : drapeau =', autoSignAt ? Math.round((Date.now() - autoSignAt) / 1000) + ' s' : 'absent',
+            '| signature enregistrée =', !!signature);
+        if (!autoSignAt) {
+            return;
+        }
+        browser.storage.local.remove('autoSignAt');
+        if (signature && Date.now() - autoSignAt < AUTOSIGN_MAX_AGE) {
+            // Le compte à rebours de 3 s a lieu sur la page du code, avant la navigation : ici le canvas existe déjà,
+            // mais le composant redimensionne (et vide) son canvas dans ngAfterViewInit, de façon asynchrone.
+            // On attend donc que canvas.width == offsetWidth avant de dessiner
+            let tries = 0;
+            const timer = setInterval(() => {
+                const ready = canvas.offsetWidth > 0 && canvas.width === canvas.offsetWidth;
+                if (ready || ++tries > AUTOSIGN_WAIT_TRIES) {
+                    clearInterval(timer);
+                    console.log('[SoWeSketch] AutoSign : canvas prêt =', ready, '| essais =', tries,
+                        '| width/offsetWidth =', canvas.width + '/' + canvas.offsetWidth);
+                    if (ready) {
+                        setTimeout(() => draw(signature), 200);
+                    }
+                }
+            }, 250);
+        }
+    });
 }
