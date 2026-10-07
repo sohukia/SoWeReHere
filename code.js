@@ -29,3 +29,28 @@ function generateFixedCode({ id, date, start }) {
   const r = 173 * id + 79 * hour + 3 * minute;
   return encode(ARRAY_CHARS_NUMERIC, r % MAX_MODULO).padStart(5, "0");
 }
+
+// Timestamp (ms) of a course "date" + time such as "07:10:00+00:00"; NaN if unreadable.
+// Same convention as generateFixedCode(): drop anything after "+" and read the clock as UTC,
+// so the result is an absolute instant that compares correctly with Date.now() in any local time zone.
+function courseTimestamp(date, time) {
+  if (!date || !time) return NaN;
+  return Date.parse(`${date}T${String(time).split("+")[0]}Z`);
+}
+
+// Picks the course the code should be shown for: the one in progress, else the next one.
+// Courses that already ended are skipped, so the code follows the schedule even if the list is stale.
+const DEFAULT_COURSE_MS = 4 * 60 * 60 * 1000;
+function pickCourse(list, now = Date.now()) {
+  const dated = list
+    .map((course) => {
+      const start = courseTimestamp(course.date, course.start);
+      const end = courseTimestamp(course.endDate || course.date, course.end);
+      return { course, start, end: Number.isNaN(end) ? start + DEFAULT_COURSE_MS : end };
+    })
+    .filter((c) => !Number.isNaN(c.start))
+    .sort((a, b) => a.start - b.start);
+  const current = dated.find((c) => c.end > now);
+  // Nothing upcoming in the list: fall back to the last known course
+  return (current || dated[dated.length - 1] || {}).course || list[0];
+}
